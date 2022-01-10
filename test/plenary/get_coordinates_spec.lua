@@ -1,7 +1,7 @@
 local assert = require('luassert.assert')
 local stub = require('luassert.stub')
 
-local abbrcmd = require('abbrcmd')
+local abbremand = require('abbremand')
 
 local function get_coordinates_helper(value, beginning_text, end_text)
     local start_text = beginning_text
@@ -12,7 +12,7 @@ local function get_coordinates_helper(value, beginning_text, end_text)
     local cursor_col = #beginning_text + #value + 1
     stub(vim.api, 'nvim_win_get_cursor').returns({ cursor_line, cursor_col })
 
-    local actual_coordinates = abbrcmd._get_coordinates(value)
+    local actual_coordinates = abbremand._get_coordinates(value)
 
     vim.api.nvim_get_current_line:revert()
     vim.api.nvim_win_get_cursor:revert()

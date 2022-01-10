@@ -1,6 +1,6 @@
 -- imports for use in tests
 require('test.plenary.custom_assertions')
-local abbrcmd = require('abbrcmd')
+local abbremand = require('abbremand')
 
 -- @Summary vim deletes trigger on abbreviation expansion. this simulates it
 local function format_trigger_expanding(trigger)
