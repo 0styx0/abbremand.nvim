@@ -1,5 +1,6 @@
 local assert = require('luassert.assert')
 local abbremand = require('abbremand')
+local parse_abbrs = require('abbremand.parse_abbrs')
 local spy = require('luassert.spy')
 local stub = require('luassert.stub')
 local helpers = require('test.plenary.helpers')
@@ -13,11 +14,11 @@ describe('_find_abbrev', function()
 
     it('short circuits if abbreviation not possible', function()
         -- _create just happens to be a method used in _find_abbrev
-        local spied_create = spy.on(abbremand, '_create_abbrev_maps')
+        local spied_create = spy.on(parse_abbrs, 'get_abbr_maps')
         abbremand._find_abbrev(keyword, abbremand._keylogger)
 
         assert.spy(spied_create).was_not_called()
-        abbremand._create_abbrev_maps:revert()
+        parse_abbrs.get_abbr_maps:revert()
     end)
 
     -- the next three tests handle abbreviations formatted

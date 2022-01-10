@@ -1,19 +1,10 @@
+local parse_abbrs = require('abbremand.parse_abbrs')
 
 local ns_name = 'abbremand'
 
 -- note: nk = non-keyword (which can expand abbrevations. but can also be part of abbreviation values)
 -- functions exposed for unit tests prefixed with _. else local, or part of `abbremand`
 local abbremand = {
-    _cache = {
-        -- to check if must update the maps
-        abbrevs = '',
-        -- tracks all values containing keyword chars, to be treated differently
-        -- [last_chunk_of_value] = {full_val_i}
-        last_chunk_to_full_values = {},
-        -- tracks all abbreviations
-        -- [full_value] = trigger
-        value_to_trigger = {},
-    },
     _keylogger = '',
     _backspace_data = {
         consecutive_backspaces = 0,
@@ -29,69 +20,6 @@ local abbremand = {
     -- [id] = {original_text, tooltip_id}
     _ext_data = {},
 }
-
--- @param value - containing at least one non-keyword character
--- @return updated last_chunk_to_full_values
-local function add_nk_containing_abbr(map_nk_val, value)
-    local val_after_non_keyword_pat = vim.regex('[[:keyword:]]\\+$')
-    local val_after_nk_start, val_after_nk_end = val_after_non_keyword_pat:match_str(value)
-
-    local val_is_only_one_char_and_is_nk_keyword = not val_after_nk_start
-    if val_is_only_one_char_and_is_nk_keyword then
-        -- must be {} because last chunk could be common
-        if not map_nk_val[''] then
-            map_nk_val[''] = {}
-        end
-        table.insert(map_nk_val[''], value)
-
-        return map_nk_val
-    end
-
-    val_after_nk_start = val_after_nk_start + 1
-
-    local val_after_nk = value:sub(val_after_nk_start, val_after_nk_end)
-
-    if not map_nk_val[val_after_nk] then
-        map_nk_val[val_after_nk] = {}
-    end
-    table.insert(map_nk_val[val_after_nk], value)
-
-    return map_nk_val
-end
-
--- @Summary Parses neovim's list of abbrevations into a map
--- Caches results, so only runs if new iabbrevs are added during session
--- @return {[trigger] = value} and {[last_word_of_value_containing_keyword] = {full_values}}
-function abbremand._create_abbrev_maps()
-    local abbrevs = vim.api.nvim_exec('iabbrev', true) .. '\n' -- the \n is important for regex
-
-    if abbremand._cache.abbrevs == abbrevs then
-        return abbremand._cache.value_to_trigger, abbremand._cache.last_chunk_to_full_values
-    end
-    abbremand._cache.abbrevs = abbrevs
-
-    local cur_val_to_trig = {}
-    local cur_lchunk_to_vals = {}
-
-    for trigger, value in abbrevs:gmatch('i%s%s(.-)%s%s*(.-)\n') do
-        -- support for plugins such as vim-abolish, which adds prefix
-        -- see :help map /can appear
-        value = string.gsub(value, '^[*&@]+', '')
-
-        local value_contains_non_keyword_pat = vim.regex('[^[:keyword:]]')
-        local value_contains_non_keyword = value_contains_non_keyword_pat:match_str(value)
-        if value_contains_non_keyword then
-            cur_lchunk_to_vals = add_nk_containing_abbr(cur_lchunk_to_vals, value)
-        end
-
-        cur_val_to_trig[value] = trigger
-    end
-
-    abbremand._cache.value_to_trigger = cur_val_to_trig
-    abbremand._cache.last_chunk_to_full_values = cur_lchunk_to_vals
-
-    return cur_val_to_trig, cur_lchunk_to_vals
-end
 
 function abbremand.clear_keylogger()
     -- doing this on bufread fixes bug where characters C> are part of keylogger string
@@ -193,14 +121,15 @@ end
 
 -- @return value if val_after_nk points to abbr value, else false
 function abbremand._contains_nk_abbr(text, val_after_nk)
-    if not abbremand._cache.last_chunk_to_full_values[val_after_nk] then
+    local value_to_trigger, last_chunk_to_full_values = parse_abbrs.get_abbr_maps()
+    if not last_chunk_to_full_values[val_after_nk] then
         return false
     end
 
-    local potential_values = abbremand._cache.last_chunk_to_full_values[val_after_nk]
+    local potential_values = last_chunk_to_full_values[val_after_nk]
 
     for _, value in ipairs(potential_values) do
-        if abbremand._cache.value_to_trigger[value] and string.find(text, value, #text - #value, true) then
+        if value_to_trigger[value] and string.find(text, value, #text - #value, true) then
             return value
         end
     end
@@ -229,7 +158,7 @@ function abbremand._find_abbrev(cur_char, line_until_cursor)
     val_end = val_end - 1
     local potential_value = line_until_cursor:sub(val_start, val_end)
 
-    local value_to_trigger = abbremand._create_abbrev_maps()
+    local value_to_trigger = parse_abbrs.get_abbr_maps()
     local potential_trigger = value_to_trigger[potential_value]
 
     -- potential_value only contains characters after last non-keyword char
@@ -334,7 +263,7 @@ end
 -- @return {-1, 0, 1} - if no abbreviation found (0), if user typed out the full value
 --   instead of using trigger (0), if it was triggered properly (1)
 function abbremand._check_abbrev_remembered(trigger, value, line_until_cursor)
-    local value_trigger = abbremand._create_abbrev_maps()
+    local value_trigger = parse_abbrs.get_abbr_maps()
     local abbr_exists = value_trigger[value] == trigger
     if not abbr_exists then
         return -1
