@@ -1,6 +1,5 @@
 local parse_abbrs = require('abbremand.parse_abbrs')
-
-local ns_name = 'abbremand'
+local hooks = require('abbremand.hooks')
 
 -- note: nk = non-keyword (which can expand abbrevations. but can also be part of abbreviation values)
 -- functions exposed for unit tests prefixed with _. else local, or part of `abbremand`
@@ -17,8 +16,6 @@ local abbremand = {
         on_change = {},
     },
     _enabled = false,
-    -- [id] = {original_text, tooltip_id}
-    _ext_data = {},
 }
 
 function abbremand.clear_keylogger()
@@ -175,89 +172,6 @@ function abbremand._find_abbrev(cur_char, line_until_cursor)
     return -1
 end
 
--- @return zero indexed {row, col, col_end} of value. assumes value ends at cursor pos
-function abbremand._get_coordinates(value)
-    local row, col = unpack(vim.api.nvim_win_get_cursor(0))
-
-    local line_num = row - 1
-    local value_start = col - #value - 1
-    local value_end = col - 1
-
-    return {
-	    row = line_num,
-	    col = value_start,
-	    col_end = value_end
-    }
-end
-
-local function set_extmark(abbr_data)
-
-    local ns_id = vim.api.nvim_create_namespace(ns_name)
-
-    local ext_id = vim.api.nvim_buf_set_extmark(0, ns_id, abbr_data.row, abbr_data.col + 1, {
-        end_col = abbr_data.col_end + 1,
-    })
-
-    abbremand._ext_data[ext_id] = {
-        original_text = abbr_data.value,
-        abbr_data = abbr_data,
-    }
-
-    return ext_id
-end
-
-function abbremand._monitor_abbrs()
-
-    local row, col = unpack(vim.api.nvim_win_get_cursor(0))
-
-    local ns_id = vim.api.nvim_create_namespace(ns_name)
-
-    local marks = vim.api.nvim_buf_get_extmarks(0, ns_id, { row - 1, 0 }, { row + 1, 0 }, { details = true })
-
-    if vim.tbl_isempty(marks) then
-        return
-    end
-
-    for _, value in ipairs(marks) do
-        local ext_id, row, col, details = unpack(value)
-
-        local line = vim.api.nvim_get_current_line()
-        local ext_contents = string.sub(line, col + 1, details.end_col)
-
-        local ext_data = abbremand._ext_data[ext_id]
-
-        if ext_data.original_text ~= ext_contents then
-            for _, callback in ipairs(abbremand._clients.on_change[ext_id]) do
-                callback(ext_contents)
-            end
-            vim.api.nvim_buf_del_extmark(0, ns_id, ext_id)
-        end
-    end
-end
-
-local function trigger_callbacks(trigger, value, callbacks)
-
-	local coordinates = abbremand._get_coordinates(value)
-	local abbr = { trigger = trigger, value = value }
-	local abbr_data = vim.tbl_extend('error', abbr, coordinates)
-
-    local ext_id = set_extmark(abbr_data)
-    abbremand._clients.on_change[ext_id] = {}
-
-
-	abbr_data.on_change = function(change_callback)
-        table.insert(abbremand._clients.on_change[ext_id], change_callback)
-	end
-
-    for key, callback in ipairs(callbacks) do
-        local cb_result = callback(abbr_data)
-
-        if cb_result == false then
-            table.remove(callbacks, key)
-        end
-    end
-end
-
 -- @Summary checks if abbreviation functionality was used.
 --   if value was manually typed, notify user
 -- @return {-1, 0, 1} - if no abbreviation found (0), if user typed out the full value
@@ -277,7 +191,7 @@ function abbremand._check_abbrev_remembered(trigger, value, line_until_cursor)
 
     if abbr_remembered or abbremand._backspace_data.potential_trigger == trigger or abbr_remembered_midline then
         abbremand.clear_keylogger()
-        trigger_callbacks(trigger, value, abbremand._clients.remembered)
+        hooks.trigger_callbacks(trigger, value, abbremand._clients, abbremand._clients.remembered)
         abbremand._backspace_data.potential_trigger = ''
         return 1
     end
@@ -289,7 +203,7 @@ function abbremand._check_abbrev_remembered(trigger, value, line_until_cursor)
 
     if abbr_forgotten and val_in_logger then
         abbremand.clear_keylogger()
-        trigger_callbacks(trigger, value, abbremand._clients.forgotten)
+        hooks.trigger_callbacks(trigger, value, abbremand._clients, abbremand._clients.forgotten)
         return 0
     end
 
@@ -308,7 +222,7 @@ local function create_autocmds()
     vim.cmd[[
     augroup Abbremand
     autocmd!
-    autocmd TextChanged,TextChangedI * :lua require('abbremand')._monitor_abbrs()
+    autocmd TextChanged,TextChangedI * :lua require('abbremand.hooks').monitor_abbrs(require('abbremand')._clients)
     augroup END
     ]]
 end
