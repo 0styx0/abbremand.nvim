@@ -175,7 +175,7 @@ local function scan_for_abbrs()
         )
 
             if not has_subscribers() then
-                abbremand.disable()
+                abbremand.buf_disable()
                 return true
             end
 
@@ -222,7 +222,7 @@ local function create_autocmds()
     vim.cmd[[
     augroup Abbremand
     autocmd!
-    autocmd TextChanged,TextChangedI * :lua require('abbremand').handle_on_change()
+    autocmd TextChanged,TextChangedI * :lua require('abbremand')._handle_on_change()
     augroup END
     ]]
 end
@@ -237,14 +237,17 @@ local function handle_on_change()
     hooks.monitor_abbrs(abbremand.clients)
 end
 
-function abbremand.disable() -- wanted to do all locals, but dependencies so can't
-    local buf = vim.api.nvim_get_current_buf()
+-- @param buf - if not passed, it's current buffer
+function abbremand.buf_disable(buf) -- wanted to do all locals, but dependencies so can't
+    buf = buf or vim.api.nvim_get_current_buf()
     abbremand.enabled[buf] = false
 end
 
-local function enable()
+-- @param buf - if not passed, it's current buffer
+local function buf_enable(buf)
 
-    local buf = vim.api.nvim_get_current_buf()
+    buf = buf or vim.api.nvim_get_current_buf()
+
     if abbremand.enabled[buf] then
         return
     end
@@ -260,7 +263,7 @@ end
 --   on_change will be fired if value is modified later
 -- If callback returns `false` it is unsubscribed from future forgotten events
 local function on_abbr_forgotten(callback)
-    enable()
+    buf_enable()
     table.insert(abbremand.clients.forgotten, callback)
 end
 
@@ -270,17 +273,14 @@ end
 --   on_change will be fired if value is modified later
 -- If callback returns `false` it is unsubscribed from future remembered events
 local function on_abbr_remembered(callback)
-    enable()
+    buf_enable()
     table.insert(abbremand.clients.remembered, callback)
 end
 
 return {
-    enable = enable,
-    disable = abbremand.disable,
-    scan_for_abbrs = scan_for_abbrs,
     on_abbr_remembered = on_abbr_remembered,
     on_abbr_forgotten = on_abbr_forgotten,
-    handle_on_change = handle_on_change,
+    _handle_on_change = handle_on_change,
     _contains_nk_abbr = contains_nk_abbr,
     _find_abbrev = find_abbrev,
     _check_abbrev_remembered = check_abbrev_remembered,

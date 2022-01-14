@@ -52,21 +52,3 @@
 + User moving on the next line closes the reminder
     + Almost certainly seen it at that point, and then it's just annoying
 
-
-
-
-highlight default link cComment Comment
-
-```vim
-nvim_get_namespaces()                                  *nvim_get_namespaces()*
-                Gets existing, non-anonymous namespaces.
-                Return: dict that maps from names to namespace ids.
-```
-
-
-want main plugin to be ui, which subscribes to other plugin
-
-check if on_change subscribers should change when plugin disabled
-
-add config option to not highlight value
-    just pass id to modify. see :help
