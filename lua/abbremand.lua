@@ -15,7 +15,8 @@ local abbremand = {
         remembered = {},
         on_change = {},
     },
-    enabled = false,
+    -- [buf_num] = bool
+    enabled = {},
 }
 
 local function clear_keylogger()
@@ -236,17 +237,21 @@ local function handle_on_change()
     hooks.monitor_abbrs(abbremand.clients)
 end
 
-local function disable()
-    -- setting this makes `nvim_buf_attach` return true,
-    -- detaching from buffer and clearing keylogger
-    -- @see abbremand.start
-    abbremand.enabled = false
+function abbremand.disable() -- wanted to do all locals, but dependencies so can't
+    local buf = vim.api.nvim_get_current_buf()
+    abbremand.enabled[buf] = false
 end
 
 local function enable()
+
+    local buf = vim.api.nvim_get_current_buf()
+    if abbremand.enabled[buf] then
+        return
+    end
+
     scan_for_abbrs()
     create_autocmds()
-    abbremand.enabled = true
+    abbremand.enabled[buf] = true
 end
 
 -- @param callback: function which will receive as arguments:
@@ -255,9 +260,7 @@ end
 --   on_change will be fired if value is modified later
 -- If callback returns `false` it is unsubscribed from future forgotten events
 local function on_abbr_forgotten(callback)
-    if not abbremand.enabled then
-        enable()
-    end
+    enable()
     table.insert(abbremand.clients.forgotten, callback)
 end
 
@@ -267,15 +270,13 @@ end
 --   on_change will be fired if value is modified later
 -- If callback returns `false` it is unsubscribed from future remembered events
 local function on_abbr_remembered(callback)
-    if not abbremand.enabled then
-        enable()
-    end
+    enable()
     table.insert(abbremand.clients.remembered, callback)
 end
 
 return {
     enable = enable,
-    disable = disable,
+    disable = abbremand.disable,
     scan_for_abbrs = scan_for_abbrs,
     on_abbr_remembered = on_abbr_remembered,
     on_abbr_forgotten = on_abbr_forgotten,
